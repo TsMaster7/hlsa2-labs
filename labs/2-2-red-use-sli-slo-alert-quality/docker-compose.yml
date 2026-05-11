@@ -1,0 +1,149 @@
+name: hlsa2-lab-2-2
+
+services:
+
+  checkout:
+    build:
+      context: .
+      dockerfile: checkout/Dockerfile
+    image: hlsa2-lab-2-2/checkout:dev
+    container_name: hlsa2-checkout
+    environment:
+      PAYMENTS_URL: http://payments:8081/charge
+      PAYMENTS_TIMEOUT_S: "2.0"
+      SERVICE_NAME: checkout
+    ports:
+      - "8080:8080"
+    depends_on:
+      payments:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://localhost:8080/healthz', timeout=2).status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks: [labnet]
+
+  payments:
+    build:
+      context: .
+      dockerfile: payments/Dockerfile
+    image: hlsa2-lab-2-2/payments:dev
+    container_name: hlsa2-payments
+    environment:
+      PAYMENTS_FAIL_RATIO: "0.0"
+      PAYMENTS_LATENCY_MS: "30"
+      PAYMENTS_LATENCY_JITTER_MS: "20"
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://localhost:8081/healthz', timeout=2).status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks: [labnet]
+
+  loadgen:
+    build:
+      context: .
+      dockerfile: loadgen/Dockerfile
+    image: hlsa2-lab-2-2/loadgen:dev
+    container_name: hlsa2-loadgen
+    environment:
+      CHECKOUT_URL: http://checkout:8080/checkout
+      PAYMENTS_ADMIN_URL: http://payments:8081/admin/inject
+      LOADGEN_METRICS_PORT: "9999"
+      LOADGEN_PROFILES_PATH: /app/loadgen/profiles.yaml
+    ports:
+      - "9999:9999"
+    depends_on:
+      checkout:
+        condition: service_healthy
+      payments:
+        condition: service_healthy
+    # Default to "smoke" so `docker compose up -d` produces traffic
+    # for ~60s and Grafana panels populate. Switch with:
+    #   docker compose run --rm loadgen python -m loadgen fast-burn
+    command: ["python", "-m", "loadgen", "smoke"]
+    networks: [labnet]
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: hlsa2-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=2d
+      - --web.enable-lifecycle
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks: [labnet]
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: hlsa2-alertmanager
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    ports:
+      - "9093:9093"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9093/-/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    extra_hosts:
+      # makes host.docker.internal resolvable on Linux too, so the
+      # alertmanager.yml webhook receiver works out of the box.
+      - "host.docker.internal:host-gateway"
+    networks: [labnet]
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: hlsa2-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks: [labnet]
+
+networks:
+  labnet:
+
+volumes:
+  prometheus-data:
+  alertmanager-data:
+  grafana-data:

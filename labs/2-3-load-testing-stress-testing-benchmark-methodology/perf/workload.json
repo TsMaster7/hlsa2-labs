@@ -1,0 +1,41 @@
+{
+  "$schema": "./workload.schema.json",
+  "name": "hlsa2-lab2-3-baseline",
+  "version": 1,
+  "target_rps": 100,
+  "arrival_pattern": "constant",
+  "warmup_seconds": 60,
+  "measured_seconds": 300,
+  "soak_seconds": 14400,
+  "endpoints": {
+    "fast": {
+      "weight": 60,
+      "path": "/fast",
+      "method": "GET",
+      "payload_bytes": { "min": 0, "p50": 0, "p95": 0, "max": 0 },
+      "threshold_p99_ms": 50
+    },
+    "medium": {
+      "weight": 25,
+      "path": "/medium",
+      "method": "GET",
+      "payload_bytes": { "min": 0, "p50": 0, "p95": 0, "max": 0 },
+      "threshold_p99_ms": 150
+    },
+    "slow": {
+      "weight": 15,
+      "path": "/slow",
+      "method": "GET",
+      "payload_bytes": { "min": 0, "p50": 0, "p95": 0, "max": 0 },
+      "threshold_p99_ms": 500
+    }
+  },
+  "think_time": {
+    "distribution": "lognormal",
+    "mean_seconds": 0,
+    "sigma": 0
+  },
+  "notes": [
+    "Edit this file to model YOUR system. The starter mix and rates are calibrated so the lab produces a clean coordinated-omission gap and a >2 sigma pool-size regression result, but they are not your production traffic. The architecture review in docs/review.md must defend whatever values you commit here."
+  ]
+}

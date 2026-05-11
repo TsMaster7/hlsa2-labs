@@ -1,0 +1,25 @@
+# Raw k6 streaming events can be 100s of MB on long soaks; keep
+# the summary JSONs (read by the analysis scripts) but ignore the
+# raw streams.
+perf/results/**/raw-*.json
+
+# k6 logs from individual runs - the meta.json keeps the metadata.
+# Comment this out if you want to commit logs alongside summaries.
+# perf/results/**/k6.log
+
+# Local soak collector textfile output.
+/tmp/hlsa2-textfile/
+
+# Editor/OS noise.
+.DS_Store
+*.tmp
+*.swp
+
+# Local toolchains and venvs (none needed for this lab).
+.venv/
+node_modules/
+__pycache__/
+*.pyc
+
+# Local env overrides for ports.
+.env

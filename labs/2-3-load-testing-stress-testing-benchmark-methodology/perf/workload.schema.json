@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "HLSA2 Lab 2-3 workload model",
+  "type": "object",
+  "required": [
+    "name",
+    "version",
+    "target_rps",
+    "arrival_pattern",
+    "warmup_seconds",
+    "measured_seconds",
+    "soak_seconds",
+    "endpoints"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "name": { "type": "string", "minLength": 1 },
+    "version": { "type": "integer", "minimum": 1 },
+    "target_rps": { "type": "number", "exclusiveMinimum": 0 },
+    "arrival_pattern": {
+      "type": "string",
+      "enum": ["constant", "poisson", "burst"]
+    },
+    "warmup_seconds":   { "type": "integer", "minimum": 0 },
+    "measured_seconds": { "type": "integer", "minimum": 1 },
+    "soak_seconds":     { "type": "integer", "minimum": 60 },
+    "endpoints": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["weight", "path", "method", "payload_bytes", "threshold_p99_ms"],
+        "properties": {
+          "weight": { "type": "number", "minimum": 0, "maximum": 100 },
+          "path":   { "type": "string", "pattern": "^/" },
+          "method": { "type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+          "payload_bytes": {
+            "type": "object",
+            "required": ["min", "p50", "p95", "max"],
+            "properties": {
+              "min": { "type": "number", "minimum": 0 },
+              "p50": { "type": "number", "minimum": 0 },
+              "p95": { "type": "number", "minimum": 0 },
+              "max": { "type": "number", "minimum": 0 }
+            }
+          },
+          "threshold_p99_ms": { "type": "number", "exclusiveMinimum": 0 }
+        }
+      }
+    },
+    "think_time": {
+      "type": "object",
+      "required": ["distribution"],
+      "properties": {
+        "distribution": { "type": "string", "enum": ["constant", "lognormal", "exponential"] },
+        "mean_seconds": { "type": "number", "minimum": 0 },
+        "sigma":        { "type": "number", "minimum": 0 }
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

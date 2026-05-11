@@ -1,0 +1,129 @@
+# Recording rules for the four-layer dashboard.
+#
+# Layer 1 (client) is fed by k6's --out experimental-prometheus-rw or
+# parsed offline from the JSON summary; it is intentionally not in
+# this file, because the loadgen runs ad-hoc, not as a long-lived
+# scrape target.
+#
+# Layer 2 (network) and Layer 3 (service USE) are derived here from
+# node-exporter and the SUT's pgxpool / Go runtime metrics.
+#
+# Layer 4 (dependencies) is derived from the postgres-exporter and
+# the downstream stub's own /metrics.
+
+groups:
+
+  # =================================================================
+  # Service - RED, per endpoint (Layer 3)
+  # =================================================================
+  - name: sut_red_per_endpoint
+    interval: 15s
+    rules:
+
+      # ---- Per-endpoint latency percentiles --------------------------
+      - record: sut:http_request_duration_seconds:p50
+        expr: |
+          histogram_quantile(0.50, sum by (endpoint, le) (
+            rate(http_request_duration_seconds_bucket{service="sut"}[5m])
+          ))
+
+      - record: sut:http_request_duration_seconds:p95
+        expr: |
+          histogram_quantile(0.95, sum by (endpoint, le) (
+            rate(http_request_duration_seconds_bucket{service="sut"}[5m])
+          ))
+
+      - record: sut:http_request_duration_seconds:p99
+        expr: |
+          histogram_quantile(0.99, sum by (endpoint, le) (
+            rate(http_request_duration_seconds_bucket{service="sut"}[5m])
+          ))
+
+      - record: sut:http_request_duration_seconds:p999
+        expr: |
+          histogram_quantile(0.999, sum by (endpoint, le) (
+            rate(http_request_duration_seconds_bucket{service="sut"}[5m])
+          ))
+
+      # ---- Per-endpoint request rate ---------------------------------
+      - record: sut:http_requests:rate5m
+        expr: sum by (endpoint) (rate(http_requests_total{service="sut"}[5m]))
+
+      # ---- Per-endpoint error ratio ----------------------------------
+      - record: sut:http_requests:error_ratio5m
+        expr: |
+          sum by (endpoint) (rate(http_requests_total{service="sut",status_class=~"5..|4.."}[5m]))
+          /
+          clamp_min(sum by (endpoint) (rate(http_requests_total{service="sut"}[5m])), 1e-9)
+
+  # =================================================================
+  # Service - USE (Layer 3)
+  # =================================================================
+  - name: sut_use
+    interval: 15s
+    rules:
+
+      - record: sut:pgxpool:utilization
+        expr: |
+          pgxpool_acquired_conns{service="sut"}
+          /
+          clamp_min(pgxpool_max_conns{service="sut"}, 1)
+
+      - record: sut:pgxpool:acquire_wait:p99
+        expr: |
+          histogram_quantile(0.99, sum by (le) (
+            rate(pgxpool_acquire_wait_seconds_bucket{service="sut"}[5m])
+          ))
+
+      - record: sut:goroutines
+        expr: go_goroutines{service="sut"}
+
+      - record: sut:gc_pause:p99
+        expr: |
+          histogram_quantile(0.99, sum by (le) (
+            rate(go_gc_pauses_seconds_bucket{service="sut"}[5m])
+          ))
+
+  # =================================================================
+  # Dependencies - downstream + postgres (Layer 4)
+  # =================================================================
+  - name: dependencies
+    interval: 15s
+    rules:
+
+      - record: sut:downstream_call_duration_seconds:p99
+        expr: |
+          histogram_quantile(0.99, sum by (le, target) (
+            rate(downstream_call_duration_seconds_bucket{service="sut"}[5m])
+          ))
+
+      - record: sut:downstream_call:error_ratio5m
+        expr: |
+          sum(rate(downstream_calls_total{service="sut",outcome=~"error|5xx|4xx"}[5m]))
+          /
+          clamp_min(sum(rate(downstream_calls_total{service="sut"}[5m])), 1e-9)
+
+      - record: downstream:request_duration_seconds:p99
+        expr: |
+          histogram_quantile(0.99, sum by (le, endpoint) (
+            rate(downstream_request_duration_seconds_bucket{service="downstream"}[5m])
+          ))
+
+      - record: postgres:active_connections
+        expr: pg_stat_activity_count{service="postgres",state="active"}
+
+  # =================================================================
+  # Network (Layer 2) - from node-exporter
+  # =================================================================
+  - name: network
+    interval: 30s
+    rules:
+
+      - record: host:tcp_retransmit:rate5m
+        expr: rate(node_netstat_Tcp_RetransSegs{service="host"}[5m])
+
+      - record: host:tcp_established
+        expr: node_netstat_Tcp_CurrEstab{service="host"}
+
+      - record: host:cpu_run_queue
+        expr: node_load1{service="host"}

@@ -1,0 +1,51 @@
+# Load-generator profiles for the SLO + multi-burn-rate alerting lab.
+# Each profile configures the offered load against the checkout service
+# AND the fault injection on the payments stub (applied via /admin/inject
+# at run start, reset to baseline at run end).
+#
+# Tuning notes:
+#   - The SLO targets in docs/slo.md should be set after observing the
+#     baseline. The numbers below are calibrated so that:
+#       * 5% errors over 12 min triggers a 1h fast-burn alert (>=14.4x)
+#       * 0.7% errors over 90 min triggers a 6h slow-burn alert (>=6x)
+#       * 0% errors at nominal stays well inside any reasonable SLO
+
+profiles:
+
+  nominal:
+    description: "Steady-state baseline. No injected faults."
+    rps: 50
+    duration_seconds: 1800   # 30 min, per the homework
+    payments:
+      fail_ratio: 0.0
+      latency_ms: 30
+      latency_jitter_ms: 20
+
+  fast-burn:
+    description: "Inject 5% errors for 12 min. Fast-burn alert must fire."
+    rps: 50
+    duration_seconds: 720    # 12 min
+    payments:
+      fail_ratio: 0.05
+      latency_ms: 30
+      latency_jitter_ms: 20
+
+  slow-burn:
+    description: "Inject 0.7% errors for 90 min. Slow-burn alert must fire."
+    rps: 50
+    duration_seconds: 5400   # 90 min
+    payments:
+      fail_ratio: 0.007
+      latency_ms: 30
+      latency_jitter_ms: 20
+
+  # Convenience profile for quick smoke-tests during development.
+  # Not part of the homework experiments.
+  smoke:
+    description: "60-second smoke test, used to verify the stack works end-to-end."
+    rps: 20
+    duration_seconds: 60
+    payments:
+      fail_ratio: 0.0
+      latency_ms: 30
+      latency_jitter_ms: 20

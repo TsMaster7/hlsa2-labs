@@ -1,0 +1,65 @@
+# =====================================================================
+# Alertmanager routing template for the SLO + multi-burn-rate lab.
+# =====================================================================
+#
+# This template assumes your Prometheus alerts emit labels:
+#
+#   severity: page    -> 24/7 paging route (fast burn)
+#   severity: ticket  -> business-hours ticket route (slow burn)
+#
+# Both routes point at a webhook receiver. The default URL below is
+# `http://host.docker.internal:5001/`, which works out-of-the-box on
+# Docker Desktop (macOS / Windows). On Linux, replace it with a host
+# reachable from the alertmanager container, e.g. an httpbin you spin up
+# alongside the lab, or update extra_hosts on alertmanager in
+# docker-compose.yml.
+#
+# For local testing the simplest receiver is:
+#
+#   docker run --rm -p 5001:80 mendhak/http-https-echo:33
+#
+# Then watch its stdout while you run the fast-burn experiment.
+# =====================================================================
+
+global:
+  resolve_timeout: 1m
+
+route:
+  receiver: default-ticket
+  group_by: [alertname, service, slo]
+  group_wait: 30s
+  group_interval: 1m
+  repeat_interval: 4h
+
+  routes:
+    - matchers:
+        - severity = page
+      receiver: pager
+      group_wait: 10s
+      group_interval: 1m
+      repeat_interval: 30m
+
+    - matchers:
+        - severity = ticket
+      receiver: default-ticket
+
+receivers:
+  - name: pager
+    webhook_configs:
+      - url: http://host.docker.internal:5001/
+        send_resolved: true
+
+  - name: default-ticket
+    webhook_configs:
+      - url: http://host.docker.internal:5001/
+        send_resolved: true
+
+inhibit_rules:
+  # If a fast-burn alert is already firing for a given (service, slo),
+  # there is no value in also paging on the slow-burn version of the
+  # same SLO. The fast-burn carries strictly more information.
+  - source_matchers:
+      - severity = page
+    target_matchers:
+      - severity = ticket
+    equal: [service, slo]
