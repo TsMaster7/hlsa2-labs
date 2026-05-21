@@ -1,0 +1,78 @@
+# Recording rules that the Sync/Async Overview dashboard reads. Keep
+# the labels explicit so the dashboard's PromQL stays one-line per
+# panel.
+
+groups:
+  - name: protocol-bench
+    interval: 5s
+    rules:
+      # Per-protocol p99 of the REST `/lookup`. The dashboard tile for
+      # step 3's "Protocol arena" row.
+      - record: lab32:lookup_rest_p99_seconds
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum by (le) (
+              rate(lab32_http_request_duration_seconds_bucket{service="lookup",endpoint="/lookup"}[1m])
+            )
+          )
+      - record: lab32:lookup_grpc_p99_seconds
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum by (le) (
+              rate(lab32_grpc_request_duration_seconds_bucket{service="lookup",endpoint="Lookup"}[1m])
+            )
+          )
+      - record: lab32:lookup_rest_rps
+        expr: sum(rate(lab32_http_requests_total{service="lookup",endpoint="/lookup"}[1m]))
+      - record: lab32:lookup_grpc_rps
+        expr: sum(rate(lab32_grpc_requests_total{service="lookup",endpoint="Lookup"}[1m]))
+
+  - name: sync-chain
+    interval: 5s
+    rules:
+      - record: lab32:gateway_p99_seconds
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum by (le) (
+              rate(lab32_gateway_end_to_end_duration_seconds_bucket[1m])
+            )
+          )
+      # Per-hop success rate. Multiplying these gives the "product of
+      # per-hop availabilities" that analyze-sync-chain compares
+      # against measured E2E availability.
+      - record: lab32:hop_success_rate
+        expr: |
+          sum by (hop) (rate(lab32_gateway_hop_requests_total{outcome="success"}[1m]))
+          /
+          (sum by (hop) (rate(lab32_gateway_hop_requests_total[1m])) > 0)
+
+  - name: async
+    interval: 5s
+    rules:
+      - record: lab32:consumer_event_to_effect_p99_seconds
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum by (le) (
+              rate(lab32_consumer_event_to_effect_seconds_bucket[1m])
+            )
+          )
+      - record: lab32:consumer_handler_p99_seconds
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum by (le) (
+              rate(lab32_consumer_handler_duration_seconds_bucket[1m])
+            )
+          )
+      - record: lab32:consumer_throughput_msgs_per_s
+        expr: sum(rate(lab32_consumer_handled_total[1m]))
+      - record: lab32:producer_emitted_msgs_per_s
+        expr: rate(lab32_producer_emitted_total[1m])
+      - record: lab32:producer_shed_msgs_per_s
+        expr: rate(lab32_producer_shed_total[1m])
+      - record: lab32:consumer_dropped_msgs_per_s
+        expr: rate(lab32_consumer_dropped_total[1m])

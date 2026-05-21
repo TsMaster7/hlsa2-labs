@@ -1,0 +1,44 @@
+// Lookup service - the topic 245 "same logical operation exposed two
+// ways" pivot. Both REST (cmd/lookup-svc REST handler) and gRPC (this
+// service, served by the same binary) must answer GET /lookup with an
+// identical payload at an identical arrival rate, so step 3's benchmark
+// is comparing serialization + transport, not behaviour.
+//
+// Regenerate the Go bindings with `make gen-proto` if you edit this
+// file. The committed lookup.pb.go and lookup_grpc.pb.go are wire-
+// compatible with protoc-gen-go v1.34 + protoc-gen-go-grpc v1.5.
+syntax = "proto3";
+
+package hlsa2.lab32;
+
+option go_package = "github.com/hlsa2-labs/lab3-2/proto;lab32pb";
+
+// Identical wire shape to the REST handler's request JSON.
+message LookupRequest {
+  // Item key. Drives the in-memory dataset lookup on the server.
+  string key = 1;
+
+  // small | large - selects the payload generator on the server. The
+  // request itself stays tiny; the response is what grows. This lets
+  // step 3's PAYLOAD=large regime exercise serialization + transport
+  // without changing the request profile.
+  string payload_size = 2;
+}
+
+message LookupResponse {
+  string key = 1;
+
+  // The actual response bytes. For protobuf this is a binary blob; the
+  // REST equivalent base64-encodes it into a JSON string of comparable
+  // length so neither protocol gets a "fewer bytes on the wire" gift
+  // unrelated to encoding.
+  bytes payload = 2;
+
+  // Server-side processing time in microseconds, captured so the bench
+  // analyzer can separate transport cost from server cost.
+  int64 server_us = 3;
+}
+
+service Lookup {
+  rpc Lookup(LookupRequest) returns (LookupResponse);
+}

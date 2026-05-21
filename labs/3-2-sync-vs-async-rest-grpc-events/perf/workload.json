@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "description": "Starter workload model for lab 3-2. Defend any change in docs/review.md (Section 1).",
+  "target_rps": 200,
+  "warmup_seconds": 30,
+  "measured_seconds": 180,
+  "payload_size_distribution": {
+    "small": 0.9,
+    "large": 0.1
+  },
+  "key_distribution": {
+    "kind": "zipf",
+    "skew": 1.1,
+    "n_keys": 50000
+  },
+  "think_time_ms": 0
+}

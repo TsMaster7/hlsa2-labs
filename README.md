@@ -15,6 +15,7 @@ you benchmark, improve, and document.
 | 1-3 | [labs/1-3-capacity-estimation-back-of-envelope](labs/1-3-capacity-estimation-back-of-envelope/) | Capacity Estimation (Back of Envelope) |
 | 2-2 | [labs/2-2-red-use-sli-slo-alert-quality](labs/2-2-red-use-sli-slo-alert-quality/) | RED, USE, SLIs, SLOs, and Alert Quality |
 | 2-3 | [labs/2-3-load-testing-stress-testing-benchmark-methodology](labs/2-3-load-testing-stress-testing-benchmark-methodology/) | Load Testing, Stress Testing, and Benchmark Methodology |
+| 3-2 | [labs/3-2-sync-vs-async-rest-grpc-events](labs/3-2-sync-vs-async-rest-grpc-events/) | Synchronous vs Asynchronous Communication (REST, gRPC, Events) |
 
 ## Getting Started
 
@@ -30,9 +31,9 @@ cd hlsa2-labs
 
 ## Requirements
 
-- Python 3.12+ (labs 1-1, 1-2, 1-3)
-- Docker 24+ and Docker Compose v2 (labs 2-2, 2-3)
-- [k6](https://k6.io/docs/getting-started/installation/) 0.50+ on PATH (lab 2-3)
+- Python 3.12+ (labs 1-1, 1-2, 1-3; also used by the analyzers in 3-2)
+- Docker 24+ and Docker Compose v2 (labs 2-2, 2-3, 3-2)
+- [k6](https://k6.io/docs/getting-started/installation/) 0.50+ on PATH (labs 2-3, 3-2)
 - Git
 
 Each lab's `README.md` lists the exact tooling and version it expects.
@@ -88,6 +89,20 @@ hlsa2-labs/
       runbooks/      ← rollback runbook(s) you fill in
       docs/          ← coordinated-omission analysis + architecture review (committed by you)
       scripts/       ← regression / coordinated-omission analyzers
+    3-2-sync-vs-async-rest-grpc-events/
+      README.md      ← lab setup, stack overview, experiment workflow
+      docker-compose.yml ← lookup (REST+gRPC) + auth/pricing/inventory + gateway + producer + consumer + Redpanda + Postgres + Prometheus + Grafana
+      Makefile       ← `make up`, `make bench-protocols`, `make bench-sync-chain`, `make bench-async-overload`, `make replay`, `make regression`, etc.
+      proto/         ← lookup.proto + committed Go bindings (no protoc needed)
+      cmd/           ← Go binaries: lookup-svc, chain-svc, gateway, producer, consumer
+      internal/      ← shared Go packages (metrics, inject, payload, kafka, breaker)
+      postgres/      ← events_audit + events_audit_naive bootstrap
+      prometheus/    ← scrape config and Sync/Async recording rules
+      grafana/       ← provisioned Sync/Async Overview dashboard
+      perf/          ← k6 scripts (REST/gRPC/sync-chain/async), workload model, results (committed by you)
+      runbooks/      ← sync-chain incident + async backpressure runbooks
+      docs/          ← review template + dashboard screenshots (committed by you)
+      scripts/       ← experiment runners + analyze-* Python scripts
 ```
 
 ## License

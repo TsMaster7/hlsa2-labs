@@ -1,0 +1,335 @@
+name: hlsa2-lab-3-2
+
+services:
+
+  # --- Storage -------------------------------------------------------
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: hlsa2-l32-postgres
+    environment:
+      POSTGRES_USER: lab
+      POSTGRES_PASSWORD: lab
+      POSTGRES_DB: lab
+    command:
+      - postgres
+      - -c
+      - max_connections=200
+      - -c
+      - shared_buffers=256MB
+    volumes:
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - postgres-data:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "lab", "-d", "lab"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks: [labnet]
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.16.0
+    container_name: hlsa2-l32-pgexp
+    environment:
+      DATA_SOURCE_NAME: "postgresql://lab:lab@postgres:5432/lab?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${LAB_POSTGRES_EXPORTER_PORT:-9187}:9187"
+    networks: [labnet]
+
+  # --- Broker --------------------------------------------------------
+
+  redpanda:
+    image: redpandadata/redpanda:v24.2.4
+    container_name: hlsa2-l32-redpanda
+    command:
+      - redpanda
+      - start
+      - --node-id
+      - "0"
+      - --kafka-addr
+      - "PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092"
+      - --advertise-kafka-addr
+      - "PLAINTEXT://redpanda:29092,OUTSIDE://localhost:9092"
+      - --rpc-addr
+      - "0.0.0.0:33145"
+      - --advertise-rpc-addr
+      - "redpanda:33145"
+      - --mode
+      - "dev-container"
+      - --smp
+      - "1"
+      - --memory
+      - "1G"
+      - --overprovisioned
+    ports:
+      - "${LAB_REDPANDA_PORT:-9092}:9092"
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster info -X brokers=redpanda:29092 >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    networks: [labnet]
+
+  redpanda-init:
+    image: redpandadata/redpanda:v24.2.4
+    container_name: hlsa2-l32-rpinit
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        rpk -X brokers=redpanda:29092 topic create events --partitions 6 --replicas 1 || true
+        rpk -X brokers=redpanda:29092 topic create events.dlq --partitions 3 --replicas 1 || true
+        rpk -X brokers=redpanda:29092 topic list
+    restart: "no"
+    networks: [labnet]
+
+  # --- Application services -----------------------------------------
+
+  lookup-svc:
+    build:
+      context: .
+      dockerfile: cmd/lookup-svc/Dockerfile
+    image: hlsa2-lab-3-2/lookup-svc:dev
+    container_name: hlsa2-l32-lookup
+    environment:
+      LOOKUP_REST_ADDR: ":8080"
+      LOOKUP_GRPC_ADDR: ":9000"
+    ports:
+      - "${LAB_REST_PORT:-8080}:8080"
+      - "${LAB_GRPC_PORT:-9000}:9000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks: [labnet]
+
+  auth:
+    build:
+      context: .
+      dockerfile: cmd/chain-svc/Dockerfile
+    image: hlsa2-lab-3-2/chain-svc:dev
+    container_name: hlsa2-l32-auth
+    environment:
+      CHAIN_NAME: "auth"
+      CHAIN_LISTEN_ADDR: ":8091"
+      CHAIN_BASE_LATENCY_MS: "5"
+      CHAIN_BASE_JITTER_MS: "2"
+    ports:
+      - "${LAB_AUTH_PORT:-8091}:8091"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8091/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks: [labnet]
+
+  pricing:
+    build:
+      context: .
+      dockerfile: cmd/chain-svc/Dockerfile
+    image: hlsa2-lab-3-2/chain-svc:dev
+    container_name: hlsa2-l32-pricing
+    environment:
+      CHAIN_NAME: "pricing"
+      CHAIN_LISTEN_ADDR: ":8092"
+      CHAIN_BASE_LATENCY_MS: "15"
+      CHAIN_BASE_JITTER_MS: "5"
+    ports:
+      - "${LAB_PRICING_PORT:-8092}:8092"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8092/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks: [labnet]
+
+  inventory:
+    build:
+      context: .
+      dockerfile: cmd/chain-svc/Dockerfile
+    image: hlsa2-lab-3-2/chain-svc:dev
+    container_name: hlsa2-l32-inventory
+    environment:
+      CHAIN_NAME: "inventory"
+      CHAIN_LISTEN_ADDR: ":8093"
+      CHAIN_BASE_LATENCY_MS: "10"
+      CHAIN_BASE_JITTER_MS: "3"
+    ports:
+      - "${LAB_INVENTORY_PORT:-8093}:8093"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8093/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks: [labnet]
+
+  gateway:
+    build:
+      context: .
+      dockerfile: cmd/gateway/Dockerfile
+    image: hlsa2-lab-3-2/gateway:dev
+    container_name: hlsa2-l32-gateway
+    environment:
+      GATEWAY_LISTEN_ADDR: ":8090"
+      GATEWAY_AUTH_URL: "http://auth:8091"
+      GATEWAY_PRICING_URL: "http://pricing:8092"
+      GATEWAY_INVENTORY_URL: "http://inventory:8093"
+      GATEWAY_LOOKUP_REST_URL: "http://lookup-svc:8080"
+      GATEWAY_LOOKUP_GRPC_ADDR: "lookup-svc:9000"
+      CIRCUIT_BREAKER: "${CIRCUIT_BREAKER:-off}"
+      GATEWAY_LOOKUP_TRANSPORT: "${GATEWAY_LOOKUP_TRANSPORT:-rest}"
+      GATEWAY_AUDIT_MODE: "${GATEWAY_AUDIT_MODE:-sync}"
+      GATEWAY_KAFKA_BROKERS: "redpanda:29092"
+    depends_on:
+      auth:
+        condition: service_healthy
+      pricing:
+        condition: service_healthy
+      inventory:
+        condition: service_healthy
+      lookup-svc:
+        condition: service_healthy
+    ports:
+      - "${LAB_GATEWAY_PORT:-8090}:8090"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8090/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks: [labnet]
+
+  producer:
+    build:
+      context: .
+      dockerfile: cmd/producer/Dockerfile
+    image: hlsa2-lab-3-2/producer:dev
+    container_name: hlsa2-l32-producer
+    environment:
+      PRODUCER_LISTEN_ADDR: ":8094"
+      PRODUCER_KAFKA_BROKERS: "redpanda:29092"
+      PRODUCER_TOPIC: "events"
+      PRODUCER_CONSUMER_URL: "http://consumer:8095"
+      FLOW_CONTROL: "${FLOW_CONTROL:-off}"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+    ports:
+      - "${LAB_PRODUCER_PORT:-8094}:8094"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8094/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks: [labnet]
+
+  consumer:
+    build:
+      context: .
+      dockerfile: cmd/consumer/Dockerfile
+    image: hlsa2-lab-3-2/consumer:dev
+    container_name: hlsa2-l32-consumer
+    environment:
+      CONSUMER_LISTEN_ADDR: ":8095"
+      CONSUMER_KAFKA_BROKERS: "redpanda:29092"
+      CONSUMER_TOPIC: "events"
+      CONSUMER_DLQ_TOPIC: "events.dlq"
+      CONSUMER_GROUP: "events-consumer"
+      CONSUMER_DB_DSN: "postgres://lab:lab@postgres:5432/lab?sslmode=disable"
+      CONSUMER_MODE: "${CONSUMER_MODE:-idempotent}"
+      FLOW_CONTROL: "${FLOW_CONTROL:-off}"
+      CONSUMER_QUEUE_MAX: "${CONSUMER_QUEUE_MAX:-10000}"
+      CONSUMER_HANDLER_RATE: "1500"
+      ASYNC_MAX_QUEUE_GUARD: "${ASYNC_MAX_QUEUE_GUARD:-2000000}"
+      REPLAY_RATE_LIMIT: "${REPLAY_RATE_LIMIT:-0}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+    ports:
+      - "${LAB_CONSUMER_PORT:-8095}:8095"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8095/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks: [labnet]
+
+  # --- Observability -------------------------------------------------
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: hlsa2-l32-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-lifecycle
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "${LAB_PROMETHEUS_PORT:-9090}:9090"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks: [labnet]
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: hlsa2-l32-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "${LAB_GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks: [labnet]
+
+networks:
+  labnet:
+
+volumes:
+  postgres-data:
+  prometheus-data:
+  grafana-data:

@@ -1,0 +1,152 @@
+{
+  "uid": "sync-async-overview",
+  "title": "Sync/Async Overview",
+  "tags": ["hlsa2", "lab3-2"],
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "now-30m", "to": "now" },
+  "timezone": "browser",
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Protocols (step 3): REST/JSON vs gRPC/Protobuf",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Lookup p99 latency (s) by protocol",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "targets": [
+        { "expr": "lab32:lookup_rest_p99_seconds", "legendFormat": "rest", "refId": "A" },
+        { "expr": "lab32:lookup_grpc_p99_seconds", "legendFormat": "grpc", "refId": "B" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Lookup throughput (req/s) by protocol",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "targets": [
+        { "expr": "lab32:lookup_rest_rps", "legendFormat": "rest", "refId": "A" },
+        { "expr": "lab32:lookup_grpc_rps", "legendFormat": "grpc", "refId": "B" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" } }
+    },
+    {
+      "id": 4,
+      "type": "row",
+      "title": "Sync chain (step 4): availability tax + breaker",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "collapsed": false
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Gateway p99 (s) - end-to-end",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
+      "targets": [
+        { "expr": "lab32:gateway_p99_seconds", "legendFormat": "p99", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Per-hop success rate (multiply -> product availability)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 },
+      "targets": [
+        { "expr": "lab32:hop_success_rate", "legendFormat": "{{hop}}", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit" } }
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Breaker state (0=closed, 1=open)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 5, "w": 24, "x": 0, "y": 18 },
+      "targets": [
+        { "expr": "lab32_gateway_breaker_open", "legendFormat": "{{hop}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "row",
+      "title": "Async path (step 5): backpressure + flow control",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+      "collapsed": false
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Consumer queue depth",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "targets": [
+        { "expr": "lab32_consumer_queue_depth", "legendFormat": "queue_depth", "refId": "A" }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Event-to-effect p99 (s)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "targets": [
+        { "expr": "lab32:consumer_event_to_effect_p99_seconds", "legendFormat": "e2e_p99", "refId": "A" },
+        { "expr": "lab32:consumer_handler_p99_seconds", "legendFormat": "handler_p99", "refId": "B" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Producer emit/shed + consumer dropped (msg/s)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 32 },
+      "targets": [
+        { "expr": "lab32:producer_emitted_msgs_per_s", "legendFormat": "produced", "refId": "A" },
+        { "expr": "lab32:producer_shed_msgs_per_s", "legendFormat": "shed (429)", "refId": "B" },
+        { "expr": "lab32:consumer_dropped_msgs_per_s", "legendFormat": "dropped (drop-oldest)", "refId": "C" },
+        { "expr": "lab32:consumer_throughput_msgs_per_s", "legendFormat": "consumed", "refId": "D" }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "row",
+      "title": "Replay (step 6): downstream impact",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 40 },
+      "collapsed": false
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Postgres connections in use",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 41 },
+      "targets": [
+        { "expr": "pg_stat_activity_count", "legendFormat": "{{datname}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Postgres tx commit/rollback rate",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 41 },
+      "targets": [
+        { "expr": "rate(pg_stat_database_xact_commit{datname=\"lab\"}[1m])", "legendFormat": "commits", "refId": "A" },
+        { "expr": "rate(pg_stat_database_xact_rollback{datname=\"lab\"}[1m])", "legendFormat": "rollbacks", "refId": "B" }
+      ]
+    }
+  ]
+}

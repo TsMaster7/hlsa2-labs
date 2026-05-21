@@ -1,0 +1,18 @@
+# Local environment overrides
+.env
+
+# k6 / experiment results — keep run directories but ignore noise
+perf/results/**/raw-*.json
+perf/results/**/*.log
+
+# Generated artefacts
+docs/img/*.png
+docs/img/*.jpg
+!docs/img/.gitkeep
+docs/review.md
+
+# Go build outputs (we never build on host; everything runs in containers)
+bin/
+
+# OS junk
+.DS_Store
