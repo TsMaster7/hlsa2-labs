@@ -30,8 +30,9 @@ def _run_condition(
     request_ids: list[int],
     service_time_ms: float,
     inter_arrival_ms: float | None = None,
+    max_queue_size: int | None = None,
 ) -> dict:
-    pool = WorkerPool(workers=workers, service_time_ms=service_time_ms)
+    pool = WorkerPool(workers=workers, service_time_ms=service_time_ms, max_queue_size=max_queue_size)
     collector = MetricsCollector()
 
     start = time.monotonic()
@@ -56,7 +57,7 @@ def _print_report(results: list[dict]) -> None:
 
     header = (
         f"{'Condition':<12} {'Workers':>7} {'Requests':>8} {'Rejected':>8} "
-        f"{'Mean(ms)':>9} {'p95(ms)':>9} {'Throughput':>12} {'Duration':>10}"
+        f"{'Mean(ms)':>9} {'p95(ms)':>9} {'Throughput':>14} {'Duration':>10}"
     )
     print(header)
     print("-" * len(header))
@@ -66,6 +67,26 @@ def _print_report(results: list[dict]) -> None:
             f"{r['condition']:<12} {r['workers']:>7} {r['count']:>8} "
             f"{r['rejected']:>8} {r['mean_ms']:>9.2f} {r['p95_ms']:>9.2f} "
             f"{r['throughput_rps']:>10.2f} r/s {r['duration_s']:>8.3f} s"
+        )
+
+    print()
+    print(_SEPARATOR)
+    print("LATENCY BREAKDOWN (Queue Wait + Service Time)")
+    print(_SEPARATOR)
+    print()
+
+    breakdown_header = (
+        f"{'Condition':<12} {'QueueMean':>10} {'QueueP95':>10} "
+        f"{'ServiceMean':>12} {'ServiceP95':>11} {'TotalMean':>10} {'TotalP95':>9}"
+    )
+    print(breakdown_header)
+    print("-" * len(breakdown_header))
+
+    for r in results:
+        print(
+            f"{r['condition']:<12} {r['queue_mean_ms']:>9.2f}ms {r['queue_p95_ms']:>9.2f}ms "
+            f"{r['service_mean_ms']:>11.2f}ms {r['service_p95_ms']:>10.2f}ms "
+            f"{r['mean_ms']:>9.2f}ms {r['p95_ms']:>8.2f}ms"
         )
 
     print()
@@ -80,9 +101,11 @@ def run_benchmark(config_path: str | Path | None = None) -> list[dict]:
     workers: int = cfg.get("workers", os.cpu_count() or 4)
     total_requests: int = cfg.get("total_requests", 500)
     saturated_multiplier: int = cfg.get("saturated_multiplier", 3)
+    max_queue_size: int | None = cfg.get("max_queue_size")
 
+    queue_info = f"max_queue_size={max_queue_size}" if max_queue_size is not None else "unbounded queue"
     print(f"Config: service_time={service_time_ms}ms, workers={workers}, "
-          f"requests={total_requests}, saturated_multiplier={saturated_multiplier}")
+          f"requests={total_requests}, saturated_multiplier={saturated_multiplier}, {queue_info}")
     print()
 
     results: list[dict] = []
@@ -90,25 +113,23 @@ def run_benchmark(config_path: str | Path | None = None) -> list[dict]:
     # --- Serial (1 worker) ---
     serial_ids = generate_serial(total_requests)
     results.append(
-        _run_condition("Serial", 1, serial_ids, service_time_ms)
+        _run_condition("Serial", 1, serial_ids, service_time_ms, max_queue_size=max_queue_size)
     )
 
     # --- Parallel (N workers) ---
     parallel_ids = generate_parallel(total_requests)
     results.append(
-        _run_condition("Parallel", workers, parallel_ids, service_time_ms)
+        _run_condition("Parallel", workers, parallel_ids, service_time_ms, max_queue_size=max_queue_size)
     )
 
-    # --- Saturated (N workers, excess load with arrival rate) ---
+    # --- Saturated (N workers, controlled arrival rate at 1.5x capacity) ---
     saturated_ids = generate_saturated(total_requests, saturated_multiplier)
     capacity_rps = workers / (service_time_ms / 1000.0)
     overload_rps = capacity_rps * 1.5
     inter_arrival_ms = 1000.0 / overload_rps
     results.append(
-        _run_condition(
-            "Saturated", workers, saturated_ids, service_time_ms,
-            inter_arrival_ms=inter_arrival_ms,
-        )
+        _run_condition("Saturated", workers, saturated_ids, service_time_ms,
+                      inter_arrival_ms=inter_arrival_ms, max_queue_size=max_queue_size)
     )
 
     _print_report(results)

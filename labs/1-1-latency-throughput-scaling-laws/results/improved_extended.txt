@@ -1,0 +1,23 @@
+Config: service_time=10ms, workers=24, requests=1000, saturated_multiplier=10, max_queue_size=5000
+
+============================================================
+BENCHMARK RESULTS
+============================================================
+
+Condition    Workers Requests Rejected  Mean(ms)   p95(ms)     Throughput   Duration
+------------------------------------------------------------------------------------
+Serial             1     1000        0   6114.88  11657.23      81.59 r/s   12.257 s
+Parallel          24     1000        0    252.15    472.12    2010.02 r/s    0.498 s
+Saturated         24     5024     4976    273.80    516.63    1402.83 r/s    3.581 s
+
+============================================================
+LATENCY BREAKDOWN (Queue Wait + Service Time)
+============================================================
+
+Condition     QueueMean   QueueP95  ServiceMean      ServiceP95   TotalMean  TotalP95
+--------------------------------------------------------------------------------------
+Serial         6102.65ms  11647.13ms       12.22ms      14.71ms   6114.88ms 11657.23ms
+Parallel        240.39ms    461.41ms       11.77ms      14.25ms    252.15ms   472.12ms
+Saturated       262.61ms    505.50ms       11.19ms      14.05ms    273.80ms   516.63ms
+
+============================================================

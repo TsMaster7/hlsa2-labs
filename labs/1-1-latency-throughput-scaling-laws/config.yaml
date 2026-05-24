@@ -1,7 +1,7 @@
 # Benchmark configuration
-# Students: adjust these values or modify the simulator code as your improvement.
 
 service_time_ms: 10       # Base simulated processing time per request (ms)
-workers: 4                # Number of concurrent workers in the pool
-total_requests: 500       # Requests per workload condition (serial / parallel)
-saturated_multiplier: 3   # Saturated workload sends total_requests * multiplier
+workers: 24               # Number of concurrent workers in the pool (optimal for 8-core system)
+total_requests: 1000      # Requests per workload condition (serial / parallel)
+saturated_multiplier: 10  # Saturated workload sends total_requests * multiplier
+max_queue_size: 5000      # Maximum queue depth (null = unbounded). Requests rejected when full.
