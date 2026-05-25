@@ -32,10 +32,12 @@ class WorkerPool:
         self.service_time_ms = service_time_ms
         self.write_service_time_ms = write_service_time_ms or service_time_ms
 
-    def _handle_request(self, request: Request) -> tuple[float, str]:
+    def _handle_request(self, request: Request, submit_time: float) -> tuple[float, str]:
         """Simulate processing a single request.
 
         Returns ``(latency_ms, request_type)``.
+        Latency is measured from submission (includes queue wait time + service time),
+        which is what reveals queueing effects under bursty arrivals.
         Adds +/-20 % jitter to the base service time.
         """
         base_ms = (
@@ -45,10 +47,8 @@ class WorkerPool:
         )
         jitter = random.uniform(0.8, 1.2)
         sleep_s = (base_ms * jitter) / 1000.0
-
-        start = time.monotonic()
         time.sleep(sleep_s)
-        latency_ms = (time.monotonic() - start) * 1000.0
+        latency_ms = (time.monotonic() - submit_time) * 1000.0
         return latency_ms, request.type
 
     def run(
@@ -66,7 +66,8 @@ class WorkerPool:
         with ThreadPoolExecutor(max_workers=self.workers) as pool:
             futures: dict = {}
             for i, req in enumerate(requests):
-                futures[pool.submit(self._handle_request, req)] = req
+                submit_time = time.monotonic()
+                futures[pool.submit(self._handle_request, req, submit_time)] = req
                 if inter_arrival_times is not None and i < len(inter_arrival_times):
                     time.sleep(inter_arrival_times[i] / 1000.0)
 
