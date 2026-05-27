@@ -89,7 +89,10 @@ This is the correct end-to-end latency a client would observe, and it makes queu
 visible under bursty arrivals.
 
 ## SECTION 1: Environment
- todo: add env there
+ - Python 3.14
+ - Apple M1 Pro, 8 cores, 32GB RAM
+ - OS: macOS Sequoia, Version 15.3.1 (24D70)
+ - no other load
  
 ## SECTION 2: Workload Shape Analysis
 
@@ -144,3 +147,33 @@ Meanwhile, the results of 0.80 to 0.95 comparison are a little bit strange:
 - I/O subsystem utilization decreased from 40.4% to 9.4% (which is absolutely OK)
 - Connection pool is the bottleneck for both cases (as it must be)
 - Connection pool utilisation decreased from 72.7% to 65.2% (it shouldn't be so; can be explained by some system instability)
+
+## SECTION 4: Improvement Results
+
+**Improvement applied:** CQRS read replica routing (`replica_lag_ms=2ms`)
+
+**Config:** `workers=4, io_workers=2, target_utilization=0.85, read_fraction=0.70, total_requests=1500, arrival=bursty`
+
+| Metric               | Baseline (bursty) | Improved (bursty) | Delta        |
+| -------------------- | ----------------- | ----------------- | ------------ |
+| Mean latency (ms)    | 23.43             | 16.84             | −6.59 (−28%) |
+| p95 latency (ms)     | 60.34             | 24.64             | −35.70 (−59%)|
+| Throughput (r/s)     | 231.14            | 233.08            | +1.94 (+1%)  |
+| Rejected requests    | 0                 | 0                 | 0            |
+| Bottleneck util %    | 66.3              | 67.1              | +0.8         |
+
+The bottleneck utilisation figure is unchanged because it is computed analytically as `rps × avg_service_time / workers`, which sees the same throughput, the same weighted-average service time, and the same worker count regardless of whether CQRS routing is active — the formula has no awareness of the two separate pools. 
+In reality, the primary pool (writes only) runs at ~26% utilisation and the replica pool (reads only) at ~48%, both well below the reported 66%.
+This metric could be fixed in the future by tracking primary and replica pool utilisation separately in `MetricsCollector`.
+
+## SECTION 5: New Risk Introduced
+
+CQRS routing introduces **stale read**: if the replica lags behind the primary, a read immediately after a write may return outdated data. Any operation that requires read-your-writes consistency (e.g., reading back a record the same request just created) must bypass the replica and go to the primary, or the client will observe a phantom rollback.
+
+The specific failure mode is a **dirty read under replication lag** — the replica serves a version of the row that predates a committed write. Track **`replica_lag_ms` p95** on the production dashboard; if it consistently exceeds the application's staleness budget, stale reads become user-visible and the replica must be excluded from the read pool until it catches up.
+
+## SECTION 6: Bottleneck Migration and Next Step
+
+After CQRS the primary pool handles writes only (~30% of traffic), dropping its utilisation to ~26%, so the connection pool is no longer the binding constraint.
+
+The next bottleneck in the chain is the **I/O subsystem (WAL throughput)**: writes now arrive at the primary undiluted by reads, and `io_util` will saturate first as throughput grows — the signal to watch is `io_subsystem` utilisation crossing 70% while `connection_pool` stays low. The single next change would be to increase `io_workers` (add WAL writer threads or provision a faster disk), which directly raises the I/O subsystem's capacity ceiling.
