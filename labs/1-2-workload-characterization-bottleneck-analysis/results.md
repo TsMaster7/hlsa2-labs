@@ -1,6 +1,6 @@
 # Lab 1-2 Results: Workload Characterization and Bottleneck Analysis
 
-## PREPARATIONS FOR THE RESEARCH: 
+## SECTION 0: Preparations for the research 
 ## Arrival Pattern Comparison — Baseline (before measurement fix)
 
 Config: `workers=4, io_workers=2, target_utilization=0.75, read_fraction=0.70, total_requests=5000`
@@ -87,3 +87,60 @@ latency_ms = (time.monotonic() - submit_time) * 1000.0
 
 This is the correct end-to-end latency a client would observe, and it makes queueing effects
 visible under bursty arrivals.
+
+## SECTION 1: Environment
+ todo: add env there
+ 
+## SECTION 2: Workload Shape Analysis
+
+A table comparing Poisson and bursty profiles:
+
+**Config:** `workers=4, io_workers=2, target_utilization=0.85, read_fraction=0.70, total_requests=1500`
+
+| Profile | CV (std/mean) | Mean latency (ms) | p95 latency (ms) | Throughput (r/s) | Bottleneck util % |
+| ------- | ------------- | ----------------- | ---------------- | ---------------- | ----------------- |
+| Poisson | 1.01          | 17.74             | 34.42            | 235.28           | 67.2              |
+| Bursty  | 1.50          | 23.43             | 60.34            | 231.14           | 66.3              |
+
+**CV calculation** — CV = inter_arrival_std_ms / inter_arrival_mean_ms:
+- Poisson: 3.40 / 3.37 = 1.01
+- Bursty:  5.20 / 3.46 = 1.50
+
+**Why bursty p95 is higher despite identical average load**
+
+Both profiles target the same mean inter-arrival time (~3.4 ms), so the long-run arrival rate and average utilisation (~67%) are identical. The difference is in arrival *variance*.
+
+Under Poisson arrivals (CV ≈ 1), requests are spread evenly enough that the 4-worker pool rarely has more than one request queued at a time. Under bursty arrivals (CV ≈ 1.5), inter-arrival times follow a heavy-tailed distribution: short gaps cluster requests into bursts that temporarily saturate all workers, forcing subsequent requests to wait in the thread-pool queue. This queue wait is invisible in the mean (it averages out during the quiet periods between bursts) but shows up sharply in the tail.
+
+The result: p95 latency grew from **34.42 ms → 60.34 ms**, a **1.75× increase**, while mean latency grew only moderately from **17.74 ms → 23.43 ms** (1.32×). The disproportionate p95 growth relative to the mean is the classic signature of a queue driven by arrival variance rather than by load.
+
+## SECTION 3: Read/Write Ratio Sweep
+A table of the three sweep points:
+
+**Config:** `workers=4, io_workers=2, target_utilization=0.85, total_requests=1500`
+
+| read_fraction | Bottleneck resource | Util % | Mean (ms) | p95 (ms) | Replica lag (ms) |
+| ------------- | ------------------- | ------ | --------- | -------- | ---------------- |
+| 0.50          | io_subsystem        | 69.6   | 16.38     | 25.64    | N/A              |
+| 0.80          | connection_pool      | 72.7   | 19.68     | 35.21    | N/A              |
+| 0.95          | connection_pool      | 65.2   | 15.89     | 31.60    | N/A              |
+
+**At which read_fraction does the bottleneck first exceed 70% utilisation?**
+
+At **rf=0.80** — the connection pool reaches 72.7%. At rf=0.50 the bottleneck (io_subsystem) is 69.6%, just below the threshold, and at rf=0.95 it drops further to 65.2%. So the 70% caution zone is only breached at the 80/20 read/write split, where write pressure is high enough to load the I/O path but the connection pool is still the binding resource.
+
+**At which read_fraction does the bottleneck switch from connection_pool to io_subsystem and why?**
+
+The switch happens between **rf=0.80** (connection_pool, 72.7%) and **rf=0.50** (io_subsystem, 69.6%). The crossover sits at rf≈0.60, derived from the point where both resources hit equal utilisation:
+
+```
+conn_util  = rps × avg_service_time / workers
+io_util    = rps × write_fraction × write_service_time / io_workers
+```
+
+Setting them equal and solving for rf gives rf ≈ 0.60 with this config (workers=4, io_workers=2, read_service=10ms, write_service=15ms). Above that threshold reads dominate and the connection pool is the bottleneck; below it writes dominate and the I/O subsystem becomes the bottleneck, because each write carries WAL/fsync overhead (15ms vs 10ms) and there are only 2 I/O workers to absorb the growing write rate.
+
+Meanwhile, the results of 0.80 to 0.95 comparison are a little bit strange:
+- I/O subsystem utilization decreased from 40.4% to 9.4% (which is absolutely OK)
+- Connection pool is the bottleneck for both cases (as it must be)
+- Connection pool utilisation decreased from 72.7% to 65.2% (it shouldn't be so; can be explained by some system instability)
