@@ -10,4 +10,4 @@ burst_cv: 2.0                 # Target coefficient of variation for bursty arriv
 read_fraction: 0.7            # Fraction of requests that are reads (0.0–1.0)
 target_utilization: 0.85      # Arrival rate targets this utilisation on the bottleneck resource
 io_workers: 2                 # I/O subsystem parallelism (simulated WAL writers)
-replica_lag_ms: 5             # Simulated replica lag (used by CQRS improvement option)
+replica_lag_ms: 2             # Simulated replica lag (used by CQRS improvement option)

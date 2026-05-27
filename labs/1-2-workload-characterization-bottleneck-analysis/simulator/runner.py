@@ -81,12 +81,14 @@ def run_benchmark(
     rf = read_fraction if read_fraction is not None else cfg.get("read_fraction", 0.7)
     tu = target_utilization if target_utilization is not None else cfg.get("target_utilization", 0.75)
     burst_cv: float = cfg.get("burst_cv", 2.0)
+    replica_lag_ms: float = cfg.get("replica_lag_ms", 0.0)
 
     # --- Print config ---------------------------------------------------
+    cqrs_label = f"replica_lag={replica_lag_ms}ms" if replica_lag_ms > 0 else "cqrs=off"
     print(
         f"Config: service_time={service_time_ms}ms, "
         f"write_service_time={write_service_time_ms}ms, "
-        f"workers={workers}, io_workers={io_workers_cfg}"
+        f"workers={workers}, io_workers={io_workers_cfg}, {cqrs_label}"
     )
     print(
         f"        arrival={pattern}, read_fraction={rf:.2f}, "
@@ -107,6 +109,7 @@ def run_benchmark(
         workers=workers,
         service_time_ms=service_time_ms,
         write_service_time_ms=write_service_time_ms,
+        replica_lag_ms=replica_lag_ms,
     )
     collector = MetricsCollector()
 
