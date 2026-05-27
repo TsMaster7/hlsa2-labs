@@ -1,0 +1,25 @@
+Config: service_time=10ms, write_service_time=15ms, workers=4, io_workers=2, replica_lag=2ms
+        arrival=poisson, read_fraction=0.95, target_util=0.85, burst_cv=2.0
+
+Arrival statistics:
+  inter_arrival_mean_ms: 3.03
+  inter_arrival_std_ms:  3.17
+  CV: 1.04
+
+============================================================
+BENCHMARK RESULTS
+============================================================
+
+Requests   Reads  Writes Rejected  Mean(ms)   p95(ms)   Throughput   Duration
+-----------------------------------------------------------------------------
+    1500    1422      78        0     24.32     51.80     253.31 r/s    5.922 s
+
+Resource utilisation:
+  connection_pool:  65.0%
+  io_subsystem:     9.9%
+  bottleneck:       connection_pool (65.0%)
+
+Read latency:  mean=24.69ms  p95=52.28ms
+Write latency: mean=17.61ms  p95=21.33ms
+
+============================================================

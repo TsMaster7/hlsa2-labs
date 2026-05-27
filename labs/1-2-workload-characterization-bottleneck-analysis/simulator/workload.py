@@ -77,3 +77,15 @@ def generate_arrivals(
         ]
 
     raise ValueError(f"Unknown arrival pattern: {pattern!r}")
+
+
+def route_request(request: Request, cqrs_enabled: bool) -> str:
+    """Return the target pool for a request under CQRS routing.
+
+    Reads go to the replica pool (lower service cost, no write-lock
+    contention); writes always go to the primary.  When *cqrs_enabled*
+    is False every request is routed to ``'primary'``.
+    """
+    if cqrs_enabled and request.type == "read":
+        return "replica"
+    return "primary"
