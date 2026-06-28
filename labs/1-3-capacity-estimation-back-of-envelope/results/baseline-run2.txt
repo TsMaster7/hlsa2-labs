@@ -19,12 +19,12 @@ THROUGHPUT
   Peak write QPS:              694.44 req/s
   Effective storage QPS:       2.22 k req/s    (after cache + write amp)
 
-LATENCY (5,000-sample benchmark, 1.28 s wall)
+LATENCY (5,000-sample benchmark, 1.26 s wall)
 ------------------------------------------------------------------------
-  p50:                              0.70 ms
-  p95:                              7.01 ms
-  p99:                              8.75 ms
-  mean:                             2.02 ms
+  p50:                              0.69 ms
+  p95:                              6.95 ms
+  p99:                              8.47 ms
+  mean:                             1.99 ms
   cache hit rate (observed):       0.807   (cfg: 0.800)
 
 STORAGE (with replication, indexes, write amplification)
