@@ -5,7 +5,8 @@
  - no other load
  - Lab 1-3 initial commit: 8d8cf76
  - Improvement option: D – implementing tiered storage
- - Implementation of the improvemnt: Configure a hot tier sized to 30 days of data and a cold tier on object storage for the rest. Recompute hot-tier bandwidth and storage cost.
+ - Implementation of the improvement: Configure a hot tier sized to 30 days of data and a cold tier on object storage for the rest. Recompute hot-tier bandwidth and storage cost.
+ - Lab 1-3 improvement commit: bc43ba5
 
 ## SECTION 2 – Initial capacity estimate
 
@@ -45,3 +46,41 @@ Measured values from [results/baseline.txt](results/baseline.txt). Ratio = Measu
 ³ The benchmark reports no RAM figure, so there is no measured counterpart to compare.
 
 ⁴ Not modeled in capacity-estimate.md; derived here as the cache-miss service time (`per_request_service_time_ms = 4.0`), i.e. the path a tail (p99) request takes.
+
+## Section 4 — Improvement before / after
+
+**Why D:** the system is durability-bound (3 nodes = RF, not throughput) and ~91% of its bill is storage, while 12-month retention keeps ~92% of bytes cold and rarely read — so tiering is the only lever that cuts the real bottleneck (storage cost) without touching durability.
+
+Baseline from [results/baseline.txt](results/baseline.txt), improved from [results/improved.txt](results/improved.txt).
+
+| Metric                    | Baseline | Improved |             Delta |
+| ------------------------- | -------: | -------: | ----------------: |
+| Peak read QPS observed    |    6,250 |    6,250 |                 0 |
+| Peak write QPS observed   |   694.44 |   694.44 |                 0 |
+| Storage at 12 months (TB) |   109.84 |   109.84 |               0 ¹ |
+| Total bandwidth (MB/s)    |    35.26 |    35.26 |                 0 |
+| p99 latency (ms)          |     8.75 |     8.56 |      −0.19 (−2 %) |
+| Cost per 1000 QPS ($)     | 1,770.80 |   434.14 | −1,336.66 (−75 %) |
+
+¹ Total bytes are unchanged — D re-tiers the same 109.84 TB (hot 9.12 TB / cold 100.72 TB at 0.1× $/GB); that re-split is what moves the cost line, not any reduction in stored data.
+
+## Section 5 — New risk + monitoring metric
+
+Moving ~92% of data to the cold object tier introduces a **cold-tier latency spike** risk when access drifts off the 30-day hot window (a backfill, an old-data query, or a mis-set partition key), caught by **`cold_tier_read_latency_ms` p99** — paired with **`cold_tier_read_ratio`** (share of reads served from cold) to flag the access-pattern shift before it shows up as user-facing latency.
+
+**Metrics** (both illustrative — derived from app/storage-client instrumentation tagged by `tier`):
+- `cold_tier_read_latency_ms` p99 — p99 duration of reads served from the cold tier; from a read-duration histogram: `histogram_quantile(0.99, sum by (le) (rate(storage_read_duration_seconds_bucket{tier="cold"}[5m]))) * 1000`.
+- `cold_tier_read_ratio` — fraction of reads hitting cold vs all reads: `rate(storage_reads_total{tier="cold"}[5m]) / rate(storage_reads_total[5m])`.
+
+## Section 6 — Next bottleneck forecast
+
+**Working-set memory (RAM/node)** saturates first. §4 of the estimate puts it at 72 GB = **56% of a 128 GB node**, and it scales ~linearly with load (buffer pool + read cache both grow with volume), so doubling load → ~144 GB = **112% — overflow** — while egress only reaches 56% of a 1 Gbps NIC (70.5 / 125 MB/s) and node-QPS just ~30%. 
+
+**Metric that shows it:** `buffer_pool_hit_ratio` (drops sharply once the hot set spills out of RAM, with `node_memory_used_pct` crossing ~90% behind it). **Single next change:** shard the hot dataset across more nodes so each holds a fraction of the working set (or vertical-scale to a larger-RAM instance — Option C).
+
+**Metrics** (both illustrative — derived from standard exporters):
+- `buffer_pool_hit_ratio` — page requests served from the in-RAM buffer pool vs total; falls when the working set no longer fits in RAM. DB-sourced:
+  - Postgres: `blks_hit / (blks_hit + blks_read)` (`pg_stat_database`); 
+  - InnoDB: `1 - Innodb_buffer_pool_reads / Innodb_buffer_pool_read_requests`.
+- `node_memory_used_pct` — OS memory utilisation backstop, from Prometheus `node_exporter`: `100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)`. Coarse (page cache keeps it high), so secondary to the buffer-pool ratio above.
+

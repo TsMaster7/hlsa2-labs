@@ -1,0 +1,63 @@
+========================================================================
+LAB 1-3 BENCHMARK: Capacity Estimation (Back of Envelope)
+========================================================================
+
+INPUTS
+------------------------------------------------------------------------
+  DAU: 1,000,000   sessions/user: 5.0   req/session: 30.0
+  payload: 4096 B   R:W = 9.0:1   burst x4.0   retention: 12 mo
+  RF: 3   cache hit (cfg): 0.80   index overhead: 30%   write amp: 1.4
+  fan-out/write: 2.0   instance QPS cap: 5,000   hot fraction: 8%
+  service time: storage 4.0 ms / cache 0.5 ms   target buffer: 40%
+
+THROUGHPUT
+------------------------------------------------------------------------
+  Daily requests:              150,000,000
+  Avg total QPS:               1.74 k req/s
+  Peak total QPS:              6.94 k req/s
+  Peak read QPS:               6.25 k req/s
+  Peak write QPS:              694.44 req/s
+  Effective storage QPS:       2.22 k req/s    (after cache + write amp)
+
+LATENCY (5,000-sample benchmark, 1.23 s wall)
+------------------------------------------------------------------------
+  p50:                              0.68 ms
+  p95:                              6.82 ms
+  p99:                              8.27 ms
+  mean:                             1.94 ms
+  cache hit rate (observed):       0.807   (cfg: 0.800)
+
+STORAGE (with replication, indexes, write amplification)
+------------------------------------------------------------------------
+  Daily writes:                 14,999,999
+  Daily raw growth:           104.14 GB
+  Daily replicated growth:    312.42 GB
+  Storage at 12 mo:             109.84 TB
+  Hot tier  (8%):               9.12 TB
+  Cold tier (92%):             100.72 TB
+
+BANDWIDTH (peak)
+------------------------------------------------------------------------
+  Ingress (writes + reads in):     27.13 MB/s
+  Egress (reads out):              24.41 MB/s
+  Replication egress:               5.43 MB/s
+  Fan-out egress:                   5.43 MB/s
+  Total egress:                    35.26 MB/s
+
+CAPACITY
+------------------------------------------------------------------------
+  Nodes required:                  3
+  Provisioned QPS:              15.00 k req/s
+  Utilisation at peak:             14.81 %
+  Headroom at peak:                85.19 %    (target: >= 40%)
+  Replication lag (est):            0.00 s    (budget: 5.0 s) (within budget)
+
+COST
+------------------------------------------------------------------------
+  Monthly compute:           $    1,050.00
+  Monthly hot storage:       $      933.52
+  Monthly cold storage:      $    1,031.37
+  Monthly TOTAL:             $    3,014.90
+  Cost per 1k QPS:           $    434.1449
+
+========================================================================
