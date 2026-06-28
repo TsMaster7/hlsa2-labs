@@ -22,7 +22,7 @@ infra:
   instance_qps_capacity: 5000   # sustainable QPS per node (read-equivalent)
   per_request_service_time_ms: 4.0   # baseline storage-path service time
   cache_hit_service_time_ms: 0.5     # service time on cache hit
-  hot_data_fraction: 1.0        # fraction of total dataset kept on hot tier (1.0 = no tiering)
+  hot_data_fraction: 0.083      # 30-day hot tier out of 360-day retention (30/360); rest on cold object storage
 
 capacity:
   target_buffer_pct: 40         # provision so peak load uses (100 - buffer)% of capacity
