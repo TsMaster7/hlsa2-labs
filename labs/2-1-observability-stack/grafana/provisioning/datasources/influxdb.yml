@@ -1,0 +1,15 @@
+apiVersion: 1
+
+datasources:
+  - name: InfluxDB
+    type: influxdb
+    uid: influxdb          # fixed UID so dashboard + alert JSON can reference it
+    access: proxy
+    url: http://influxdb:8086
+    jsonData:
+      version: Flux
+      organization: hlsa2
+      defaultBucket: metrics
+    secureJsonData:
+      token: hlsa2-token
+    isDefault: true

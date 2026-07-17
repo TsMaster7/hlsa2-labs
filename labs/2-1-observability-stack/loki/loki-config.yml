@@ -1,0 +1,63 @@
+# HLSA2 Lab 2-1 — Loki (single-binary, filesystem storage)
+# Pinned to grafana/loki:2.9.0.
+#
+# The `common` block sets one in-memory ring for ALL components (distributor,
+# ingester, ...). Setting inmemory only on the ingester lifecycler leaves the
+# other rings defaulting to Consul, which makes Loki crash trying to reach
+# localhost:8500.
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+
+common:
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb            # tsdb index requires schema v13
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+storage_config:
+  tsdb_shipper:
+    active_index_directory: /loki/tsdb-index
+    cache_location: /loki/tsdb-cache
+    shared_store: filesystem   # valid in 2.9.x (removed in Loki 3.x)
+  filesystem:
+    directory: /loki/chunks
+
+limits_config:
+  # Reject high-cardinality label sets early.
+  max_label_names_per_series: 10
+  max_label_value_length: 2048
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+  # Headroom so a load-test burst is not dropped with HTTP 429. Defaults
+  # (4MB/s ingest, 3MB/s per-stream) are too tight for saturation traffic.
+  ingestion_rate_mb: 16
+  ingestion_burst_size_mb: 32
+  per_stream_rate_limit: 16MB
+  per_stream_rate_limit_burst: 32MB
+
+compactor:
+  working_directory: /loki/compactor
+  shared_store: filesystem
+
+analytics:
+  reporting_enabled: false

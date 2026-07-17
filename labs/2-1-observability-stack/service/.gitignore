@@ -1,0 +1,3 @@
+# Compiled binaries from an in-place `go build` (module basename / dir name).
+/lab2-1
+/service

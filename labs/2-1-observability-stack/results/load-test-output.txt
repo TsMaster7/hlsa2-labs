@@ -1,0 +1,23 @@
+
+[Phase: Warm-up] target 10 rps for 45s -> http://localhost:18080
+  requests: 450  achieved: 10.0 rps
+  errors:   0 (0.0%)
+  latency:  p50 50.2ms  p95 73.6ms  p99 88.1ms
+
+[Phase: Nominal] target 50 rps for 90s -> http://localhost:18080
+  requests: 4494  achieved: 49.9 rps
+  errors:   0 (0.0%)
+  latency:  p50 44.5ms  p95 65.8ms  p99 84.8ms
+
+[Phase: Saturation] target 400 rps for 210s -> http://localhost:18080
+  requests: 79709  achieved: 379.6 rps
+  errors:   0 (0.0%)
+  latency:  p50 897.6ms  p95 948.2ms  p99 1028.3ms
+
+[Phase: Recovery] target 50 rps for 75s -> http://localhost:18080
+  requests: 3747  achieved: 50.0 rps
+  errors:   0 (0.0%)
+  latency:  p50 46.6ms  p95 66.8ms  p99 82.9ms
+
+Saved summary -> /Users/tarassoroka/PycharmProjects/Highload2/hlsa2-labs/labs/2-1-observability-stack/load-test/results-summary.json
+Load test complete. Grafana: http://localhost:3000

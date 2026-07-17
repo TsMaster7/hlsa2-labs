@@ -1,0 +1,156 @@
+# HLSA2 Lab 2-1 — Grafana provisioned alert rule.
+#
+# Fires when the global 5xx error rate exceeds 5% for 2 minutes.
+# Pipeline: A (Flux -> error-rate %) -> B (reduce to scalar) -> C (threshold > 5).
+#
+# NOTE: the metric lives in measurement "prometheus" as FIELD http_requests_total
+# (Telegraf metric_version=2); the 5xx subset comes from the status_class tag.
+# Cumulative counters are turned into a windowed delta with increase()|>last(),
+# NOT sum() (which would add every scrape sample together).
+
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: service-alerts
+    folder: HLSA2
+    interval: 1m
+    rules:
+      - uid: high-error-rate
+        title: High 5xx Error Rate
+        condition: C
+        for: 2m
+        noDataState: OK
+        execErrState: Error
+        isPaused: false
+        annotations:
+          summary: "api-service 5xx error rate above 5% for 2 minutes"
+          description: "The global 5xx error ratio (status_class=5xx / all requests) exceeded 5% over the last 5m window, indicating the service is shedding load (pool saturation / injected faults)."
+        labels:
+          severity: warning
+          service: api-service
+        data:
+          # A — error rate % (always returns a number; 0.0 when no 5xx)
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: influxdb
+            model:
+              refId: A
+              datasource:
+                type: influxdb
+                uid: influxdb
+              query: |
+                from(bucket: "metrics")
+                  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+                  |> filter(fn: (r) => r._measurement == "prometheus" and r._field == "http_requests_total")
+                  |> increase()
+                  |> last()
+                  |> group()
+                  |> reduce(
+                      identity: {total: 0.0, err: 0.0},
+                      fn: (r, accumulator) => ({
+                        total: accumulator.total + r._value,
+                        err: accumulator.err + (if r.status_class == "5xx" then r._value else 0.0),
+                      }))
+                  |> map(fn: (r) => ({_value: if r.total > 0.0 then r.err / r.total * 100.0 else 0.0}))
+          # B — reduce the query frame to a single scalar
+          - refId: B
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: "__expr__"
+            model:
+              refId: B
+              type: reduce
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              reducer: last
+          # C — threshold: fire when error rate > 5%
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: "__expr__"
+            model:
+              refId: C
+              type: threshold
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [5]
+
+      # ---------------------------------------------------------------------
+      # Saturation alert: the DB connection pool is starved (requests waiting
+      # for a connection). Driven purely by offered load exceeding capacity —
+      # this is what the load test's saturation phase trips, with NO fault
+      # injection. Under saturation db_connections_waiting pins near
+      # workers - pool_size (~56); nominal load sits at ~0.
+      # ---------------------------------------------------------------------
+      - uid: db-pool-saturated
+        title: DB Connection Pool Saturated
+        condition: C
+        for: 1m
+        noDataState: OK
+        execErrState: Error
+        isPaused: false
+        annotations:
+          summary: "api-service DB connection pool saturated (requests waiting for a connection)"
+          description: "Mean db_connections_waiting stayed above 5 for 1 minute — offered load is exceeding DB pool capacity (DB_POOL_SIZE), so requests are queuing for a connection. Expect elevated latency."
+        labels:
+          severity: warning
+          service: api-service
+          resource: db-pool
+        data:
+          # A — mean waiters, sampled over the last 2 minutes
+          - refId: A
+            relativeTimeRange:
+              from: 120
+              to: 0
+            datasourceUid: influxdb
+            model:
+              refId: A
+              datasource:
+                type: influxdb
+                uid: influxdb
+              query: |
+                from(bucket: "metrics")
+                  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+                  |> filter(fn: (r) => r._measurement == "prometheus" and r._field == "db_connections_waiting")
+                  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)
+          - refId: B
+            relativeTimeRange:
+              from: 120
+              to: 0
+            datasourceUid: "__expr__"
+            model:
+              refId: B
+              type: reduce
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              reducer: mean
+          - refId: C
+            relativeTimeRange:
+              from: 120
+              to: 0
+            datasourceUid: "__expr__"
+            model:
+              refId: C
+              type: threshold
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [5]

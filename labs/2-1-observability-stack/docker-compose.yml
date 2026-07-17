@@ -1,0 +1,125 @@
+# HLSA2 Lab 2-1 — Production Observability Stack (TIG + Loki + Grafana)
+#
+# Single-command bring-up:  docker compose up --build -d
+#
+# Layers:
+#   Metrics: service /metrics (Prometheus fmt) -> Telegraf -> InfluxDB 2.x -> Grafana
+#   Logs:    service JSON file -> Promtail -> Loki -> Grafana
+#   Viz:     Grafana (provisioned datasources + dashboards + alert rules)
+#
+# NOTE (macOS): logs are shipped via a shared named volume (app_logs) that the
+# service writes JSON into and Promtail tails. This is portable across Docker
+# Desktop for Mac and Linux, unlike bind-mounting /var/lib/docker/containers,
+# which is empty on Docker Desktop because the daemon runs inside a VM.
+
+name: hlsa2-lab-2-1
+
+services:
+
+  # --- Metrics storage ------------------------------------------------------
+  influxdb:
+    image: influxdb:2.7
+    container_name: hlsa2-influxdb
+    ports: ["8086:8086"]
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: adminpassword
+      DOCKER_INFLUXDB_INIT_ORG: hlsa2
+      DOCKER_INFLUXDB_INIT_BUCKET: metrics
+      DOCKER_INFLUXDB_INIT_RETENTION: 30d
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: hlsa2-token
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks: [labnet]
+
+  # --- Metrics collection agent --------------------------------------------
+  telegraf:
+    image: telegraf:1.30
+    container_name: hlsa2-telegraf
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    volumes:
+      - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+    environment:
+      INFLUX_TOKEN: hlsa2-token
+      INFLUX_ORG: hlsa2
+      INFLUX_BUCKET: metrics
+      INFLUX_URL: http://influxdb:8086
+    networks: [labnet]
+
+  # --- Log storage ----------------------------------------------------------
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: hlsa2-loki
+    ports: ["3100:3100"]
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks: [labnet]
+
+  # --- Log shipping agent ---------------------------------------------------
+  promtail:
+    image: grafana/promtail:2.9.0
+    container_name: hlsa2-promtail
+    depends_on: [loki]
+    volumes:
+      - ./promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - app_logs:/var/log/app:ro        # shared with `service`; JSON tailed here
+      - promtail_data:/promtail          # persists read positions across restarts
+    command: -config.file=/etc/promtail/config.yml
+    networks: [labnet]
+
+  # --- Visualisation + alerting --------------------------------------------
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: hlsa2-grafana
+    ports: ["3000:3000"]
+    depends_on:
+      influxdb:
+        condition: service_healthy
+      loki:
+        condition: service_started
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    networks: [labnet]
+
+  # --- Instrumented API service (system under observation) ------------------
+  service:
+    build: ./service
+    container_name: hlsa2-service
+    ports:
+      - "18080:8080"  # application API (host 18080 -> container 8080)
+      - "9090:9090"   # Prometheus /metrics (scraped by Telegraf)
+    volumes:
+      - app_logs:/var/log/app           # writes structured JSON logs here
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks: [labnet]
+
+networks:
+  labnet:
+
+volumes:
+  influxdb_data:
+  grafana_data:
+  loki_data:
+  app_logs:
+  promtail_data:

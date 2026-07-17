@@ -1,0 +1,50 @@
+[
+  {
+    "phase": "Warm-up",
+    "target_rps": 10,
+    "duration_s": 45,
+    "requests": 450,
+    "achieved_rps": 10.0,
+    "errors": 0,
+    "error_pct": 0.0,
+    "p50_ms": 49.8,
+    "p95_ms": 71.6,
+    "p99_ms": 84.7
+  },
+  {
+    "phase": "Nominal",
+    "target_rps": 50,
+    "duration_s": 90,
+    "requests": 4494,
+    "achieved_rps": 49.9,
+    "errors": 0,
+    "error_pct": 0.0,
+    "p50_ms": 44.3,
+    "p95_ms": 64.5,
+    "p99_ms": 79.6
+  },
+  {
+    "phase": "Saturation",
+    "target_rps": 400,
+    "duration_s": 210,
+    "requests": 77581,
+    "achieved_rps": 369.4,
+    "errors": 5,
+    "error_pct": 0.0,
+    "p50_ms": 895.1,
+    "p95_ms": 947.0,
+    "p99_ms": 1051.8
+  },
+  {
+    "phase": "Recovery",
+    "target_rps": 50,
+    "duration_s": 75,
+    "requests": 3750,
+    "achieved_rps": 50.0,
+    "errors": 0,
+    "error_pct": 0.0,
+    "p50_ms": 45.4,
+    "p95_ms": 64.7,
+    "p99_ms": 73.9
+  }
+]

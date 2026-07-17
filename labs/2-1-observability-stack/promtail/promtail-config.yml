@@ -1,0 +1,48 @@
+# HLSA2 Lab 2-1 — Promtail
+#
+# Tails the service's structured JSON log file on the shared `app_logs` volume
+# (portable across Docker Desktop for Mac and Linux, unlike scraping
+# /var/lib/docker/containers, which is empty on Docker Desktop) and ships it to
+# Loki. Each line is already a single JSON object, so one json stage suffices —
+# no Docker log-wrapper to unwrap.
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  # On a persistent volume so a container restart does NOT re-read the whole
+  # log file from the start (which would flood Loki and hit its rate limit).
+  filename: /promtail/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: api-service
+    static_configs:
+      - targets: [localhost]
+        labels:
+          job: api-service
+          __path__: /var/log/app/*.log
+    pipeline_stages:
+      # Parse the structured JSON log line.
+      - json:
+          expressions:
+            level: level
+            service: service
+            trace_id: trace_id
+            request_id: request_id
+            route: route
+            status: status
+            duration_ms: duration_ms
+            time: time
+      # Promote only low-cardinality fields to Loki labels.
+      # trace_id / route / status stay in the log body (queried via | json |).
+      - labels:
+          level:
+          service:
+      # Use the log's own timestamp, not ingestion time.
+      - timestamp:
+          source: time
+          format: RFC3339Nano
