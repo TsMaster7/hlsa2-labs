@@ -110,12 +110,17 @@ def run_phase(pool, name, rps, duration_s):
         else:
             time.sleep(min(next_send - now, 0.005))
     results = [f.result() for f in futures]
-    return summarize(name, rps, duration_s, results)
+    # Actual elapsed includes draining the in-flight backlog after the submit
+    # window closes. Under saturation this is LONGER than duration_s, so dividing
+    # by it gives the true completed throughput (not the offered rate).
+    elapsed_s = time.monotonic() - start
+    return summarize(name, rps, duration_s, elapsed_s, results)
 
 
-def summarize(name, rps, duration_s, results):
+def summarize(name, rps, duration_s, elapsed_s, results):
     n = len(results)
-    stats = {"phase": name, "target_rps": rps, "duration_s": duration_s, "requests": n}
+    stats = {"phase": name, "target_rps": rps, "duration_s": duration_s,
+             "elapsed_s": round(elapsed_s, 1), "requests": n}
     if n == 0:
         print("  no requests sent", flush=True)
         return stats
@@ -127,14 +132,16 @@ def summarize(name, rps, duration_s, results):
         return durations[idx]
 
     stats.update({
-        "achieved_rps": round(n / duration_s, 1),
+        # True throughput: completed requests over actual elapsed wall-clock.
+        "achieved_rps": round(n / elapsed_s, 1),
         "errors": errors,
         "error_pct": round(errors / n * 100.0, 1),
         "p50_ms": round(statistics.median(durations), 1),
         "p95_ms": round(pct(0.95), 1),
         "p99_ms": round(pct(0.99), 1),
     })
-    print(f"  requests: {n}  achieved: {stats['achieved_rps']} rps", flush=True)
+    drain = "" if elapsed_s <= duration_s + 1 else f"  (+{elapsed_s - duration_s:.0f}s drain)"
+    print(f"  requests: {n}  achieved: {stats['achieved_rps']} rps{drain}", flush=True)
     print(f"  errors:   {errors} ({stats['error_pct']}%)", flush=True)
     print(f"  latency:  p50 {stats['p50_ms']}ms  p95 {stats['p95_ms']}ms  p99 {stats['p99_ms']}ms", flush=True)
     return stats

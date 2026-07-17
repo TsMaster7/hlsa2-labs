@@ -19,5 +19,5 @@
   errors:   0 (0.0%)
   latency:  p50 46.6ms  p95 66.8ms  p99 82.9ms
 
-Saved summary -> /Users/tarassoroka/PycharmProjects/Highload2/hlsa2-labs/labs/2-1-observability-stack/load-test/results-summary.json
+Saved summary -> ./hlsa2-labs/labs/2-1-observability-stack/load-test/results-summary.json
 Load test complete. Grafana: http://localhost:3000
